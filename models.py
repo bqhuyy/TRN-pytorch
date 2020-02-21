@@ -3,6 +3,7 @@ from torch import nn
 from ops.basic_ops import ConsensusModule, Identity
 from transforms import *
 from torch.nn.init import normal, constant
+import numpy as np
 
 import TRNmodule
 
@@ -21,6 +22,8 @@ class TSN(nn.Module):
         self.crop_num = crop_num
         self.consensus_type = consensus_type
         self.img_feature_dim = img_feature_dim  # the dimension of the CNN feature to represent each frame
+        self.features = []
+
         if not before_softmax and consensus_type != 'avg':
             raise ValueError("Only avg consensus can be used after Softmax")
 
@@ -55,6 +58,7 @@ class TSN(nn.Module):
         if consensus_type in ['TRN', 'TRNmultiscale']:
             # plug in the Temporal Relation Network Module
             self.consensus = TRNmodule.return_TRN(consensus_type, self.img_feature_dim, self.num_segments, num_class)
+#             self.consensus = None
         else:
             self.consensus = ConsensusModule(consensus_type)
 
@@ -89,7 +93,6 @@ class TSN(nn.Module):
         return feature_dim
 
     def _prepare_base_model(self, base_model):
-
         if 'resnet' in base_model or 'vgg' in base_model:
             self.base_model = getattr(torchvision.models, base_model)(True)
             self.base_model.last_layer_name = 'fc'
@@ -218,17 +221,22 @@ class TSN(nn.Module):
             input = self._get_diff(input)
 
         base_out = self.base_model(input.view((-1, sample_len) + input.size()[-2:]))
-
+        
+        self.features.append(base_out.data.cpu().numpy().copy())
+        
         if self.dropout > 0:
             base_out = self.new_fc(base_out)
-
+        
         if not self.before_softmax:
             base_out = self.softmax(base_out)
         if self.reshape:
             base_out = base_out.view((-1, self.num_segments) + base_out.size()[1:])
-
         output = self.consensus(base_out)
+
         return output.squeeze(1)
+    
+    def get_features(self):
+        return np.array(self.features)
 
     def _get_diff(self, input, keep_rgb=False):
         input_c = 3 if self.modality in ["RGB", "RGBDiff"] else 2

@@ -111,8 +111,10 @@ data_loader = torch.utils.data.DataLoader(
         batch_size=1, shuffle=False,
         num_workers=args.workers * 2, pin_memory=True)
 
+
 if args.gpus is not None:
-    devices = [args.gpus[i] for i in range(args.workers)]
+#    devices = [args.gpus[i] for i in range(args.workers)]
+    devices = args.gpus 
 else:
     devices = list(range(args.workers))
 
@@ -143,11 +145,15 @@ def eval_video(video_data):
     input_var = torch.autograd.Variable(data.view(-1, length, data.size(2), data.size(3)),
                                         volatile=True)
     rst = net(input_var)
+    
     if args.softmax==1:
         # take the softmax to normalize the output to probability
         rst = F.softmax(rst)
 
     rst = rst.data.cpu().numpy().copy()
+    
+    output_path = 'features'    
+    np.save(f'{output_path}/{i}', rst)
 
     if args.crop_fusion_type in ['TRN','TRNmultiscale']:
         rst = rst.reshape(-1, 1, num_class)
@@ -170,8 +176,8 @@ for i, (data, label) in data_gen:
     output.append(rst[1:])
     cnt_time = time.time() - proc_start_time
     prec1, prec5 = accuracy(torch.from_numpy(np.mean(rst[1], axis=0)), label, topk=(1, 5))
-    top1.update(prec1[0], 1)
-    top5.update(prec5[0], 1)
+    top1.update(prec1.item(), 1)
+    top5.update(prec5.item(), 1)
     print('video {} done, total {}/{}, average {:.3f} sec/video, moving Prec@1 {:.3f} Prec@5 {:.3f}'.format(i, i+1,
                                                                     total_num,
                                                                     float(cnt_time) / (i+1), top1.avg, top5.avg))

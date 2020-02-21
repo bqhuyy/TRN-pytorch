@@ -52,8 +52,8 @@ def return_jester(modality):
     filename_categories = 'jester/category.txt'
     if modality == 'RGB':
         prefix = '{:05d}.jpg'
-        #root_data = '/data/vision/oliva/scratch/bzhou/video/jester/20bn-jester-v1'
-        root_data = '/mnt/localssd1/bzhou/jester/20bn-jester-v1'
+        root_data = '/home/ldtuan/THESIS/TRN-pytorch/video_datasets/20bn-jester-v1'
+        #root_data = '/mnt/localssd1/bzhou/jester/20bn-jester-v1'
         filename_imglist_train = 'jester/train_videofolder.txt'
         filename_imglist_val = 'jester/val_videofolder.txt'
     elif modality == 'Flow':

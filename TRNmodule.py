@@ -50,6 +50,7 @@ class RelationModuleMultiScale(torch.nn.Module):
         self.num_frames = num_frames
         num_bottleneck = 256
         self.fc_fusion_scales = nn.ModuleList() # high-tech modulelist
+        
         for i in range(len(self.scales)):
             scale = self.scales[i]
             fc_fusion = nn.Sequential(
@@ -58,9 +59,9 @@ class RelationModuleMultiScale(torch.nn.Module):
                         nn.ReLU(),
                         nn.Linear(num_bottleneck, self.num_class),
                         )
-
+           
             self.fc_fusion_scales += [fc_fusion]
-
+            
         print('Multi-Scale Temporal Relation Network Module in use', ['%d-frame relation' % i for i in self.scales])
 
     def forward(self, input):
@@ -68,7 +69,7 @@ class RelationModuleMultiScale(torch.nn.Module):
         act_all = input[:, self.relations_scales[0][0] , :]
         act_all = act_all.view(act_all.size(0), self.scales[0] * self.img_feature_dim)
         act_all = self.fc_fusion_scales[0](act_all)
-
+        
         for scaleID in range(1, len(self.scales)):
             # iterate over the scales
             idx_relations_randomsample = np.random.choice(len(self.relations_scales[scaleID]), self.subsample_scales[scaleID], replace=False)
@@ -76,6 +77,8 @@ class RelationModuleMultiScale(torch.nn.Module):
                 act_relation = input[:, self.relations_scales[scaleID][idx], :]
                 act_relation = act_relation.view(act_relation.size(0), self.scales[scaleID] * self.img_feature_dim)
                 act_relation = self.fc_fusion_scales[scaleID](act_relation)
+#                 print(f'act_relation {act_relation.shape}')
+#                 print(f'act_all {act_all.shape}')
                 act_all += act_relation
         return act_all
 

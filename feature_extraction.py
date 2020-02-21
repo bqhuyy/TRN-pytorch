@@ -34,9 +34,8 @@ def extract_frames(video_file, num_frames=8):
 
     seconds = functools.reduce(lambda x, y: x * 60 + y,
                                map(int, duration.split(':')))
-    
     rate = num_frames / float(seconds)
-    print(rate)
+
     output = subprocess.Popen(['ffmpeg', '-i', video_file,
                                '-vf', 'fps={}'.format(rate),
                                '-vframes', str(num_frames),
@@ -52,7 +51,6 @@ def extract_frames(video_file, num_frames=8):
 
 def load_frames(frame_paths, num_frames=8):
     frames = [Image.open(frame).convert('RGB') for frame in frame_paths]
-    print(f'Len frames: {len(frames)}, num_frames: {num_frames}')
     if len(frames) >= num_frames:
         return frames[::int(np.ceil(len(frames) / float(num_frames)))]
     else:
@@ -74,9 +72,8 @@ def render_frames(frames, prediction):
 
 # options
 parser = argparse.ArgumentParser(description="test TRN on a single video")
-group = parser.add_mutually_exclusive_group(required=True)
-group.add_argument('--video_file', type=str, default=None)
-group.add_argument('--frame_folder', type=str, default=None)
+# group = parser.add_mutually_exclusive_group(required=True)
+parser.add_argument('--input_path', type=str, default=None)
 parser.add_argument('--modality', type=str, default='RGB',
                     choices=['RGB', 'Flow', 'RGBDiff'], )
 parser.add_argument('--dataset', type=str, default='moments',
@@ -88,7 +85,6 @@ parser.add_argument('--test_segments', type=int, default=8)
 parser.add_argument('--img_feature_dim', type=int, default=256)
 parser.add_argument('--consensus_type', type=str, default='TRNmultiscale')
 parser.add_argument('--weights', type=str)
-
 args = parser.parse_args()
 
 # Get dataset categories.
@@ -119,35 +115,46 @@ transform = torchvision.transforms.Compose([
     transforms.GroupNormalize(net.input_mean, net.input_std),
 ])
 
-# Obtain video frames
-if args.frame_folder is not None:
-    print('Loading frames in {}'.format(args.frame_folder))
-    import glob
-    # Here, make sure after sorting the frame paths have the correct temporal order
-    frame_paths = sorted(glob.glob(os.path.join(args.frame_folder, '*.jpg')))
-    frames = load_frames(frame_paths)
-else:
-    print('Extracting frames using ffmpeg...')
-    frames = extract_frames(args.video_file, args.test_segments)
+error_files = []
+result = []
 
-# Make video prediction.
-data = transform(frames)
-input = data.view(-1, 3, data.size(1), data.size(2)).unsqueeze(0).cuda()
+for f in os.listdir(args.input_path):
 
-with torch.no_grad():
-    logits = net(input)
-    h_x = torch.mean(F.softmax(logits, 1), dim=0).data
-    probs, idx = h_x.sort(0, True)
+    # Obtain video frames
+    print(f'Extracting frames using ffmpeg on {f}...')
+    
+    try:
+        subprocess.call(['rm', '-rf', 'frames'])
+    except:
+        pass
+    
+    try:
+        frames = extract_frames(os.path.join(args.input_path, f), args.test_segments)
+    except:
+        print(f'Error: {f}')
+        error_files.append(f)
+        continue
 
-# Output the prediction.
-video_name = args.frame_folder if args.frame_folder is not None else args.video_file
-print('RESULT ON ' + video_name)
-for i in range(0, 5):
-    print('{:.3f} -> {}'.format(probs[i], categories[idx[i]]))
+    # Make video prediction.
+    data = transform(frames)
+    input = data.view(-1, 3, data.size(1), data.size(2)).unsqueeze(0).cuda()
 
-# Render output frames with prediction text.
-if args.rendered_output is not None:
-    prediction = categories[idx[0]]
-    rendered_frames = render_frames(frames, prediction)
-    clip = mpy.ImageSequenceClip(rendered_frames, fps=4)
-    clip.write_videofile(args.rendered_output)
+    with torch.no_grad():
+        logits = net(input)
+
+        h_x = torch.mean(F.softmax(logits, 1), dim=0).data
+
+        probs, idx = h_x.sort(0, True)
+    
+    result.append(idx[0].data.cpu().numpy())
+
+    exit()
+
+print('Saving labels...')
+np.save('labels.npy', np.array(result))
+print('Saving features...')
+np.save('features.npy', net.get_features())
+
+print(error_files)
+
+# command: python feature_extraction.py --arch BNInception --dataset somethingv2 --weights pretrain/TRN_somethingv2_RGB_BNInception_TRNmultiscale_segment8_best.pth.tar --input_path ../Dataset/Kinetics-400/test/
